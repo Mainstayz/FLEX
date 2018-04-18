@@ -371,34 +371,37 @@
     [invocation getReturnValue:&windows];
     return windows;
 }
-
+// 生成swizzle selector
 + (SEL)swizzledSelectorForSelector:(SEL)selector
 {
     return NSSelectorFromString([NSString stringWithFormat:@"_flex_swizzle_%x_%@", arc4random(), NSStringFromSelector(selector)]);
 }
-
+// 可以响应但是没有实现
 + (BOOL)instanceRespondsButDoesNotImplementSelector:(SEL)selector class:(Class)cls
 {
+    // 如果可以respond
     if ([cls instancesRespondToSelector:selector]) {
         unsigned int numMethods = 0;
+        // 获取方法列表指针
         Method *methods = class_copyMethodList(cls, &numMethods);
-        
+        // 是否实现方法
         BOOL implementsSelector = NO;
         for (int index = 0; index < numMethods; index++) {
             SEL methodSelector = method_getName(methods[index]);
             if (selector == methodSelector) {
+                // 已经实现了
                 implementsSelector = YES;
                 break;
             }
         }
         
         free(methods);
-        
+        // 可以响应 但是未实现
         if (!implementsSelector) {
             return YES;
         }
     }
-    
+    // 不可以响应 或者 可以响应且已经实现了
     return NO;
 }
 
@@ -411,28 +414,36 @@
         return;
     }
     
+    // 获取block的实现
     IMP implementation = imp_implementationWithBlock(block);
+    // 添加 新的 Method 
     class_addMethod(class, swizzledSelector, implementation, method_getTypeEncoding(originalMethod));
+    // 获取刚才添加新的方法
     Method newMethod = class_getInstanceMethod(class, swizzledSelector);
+    // 方法交换
     method_exchangeImplementations(originalMethod, newMethod);
 }
 
 + (void)replaceImplementationOfSelector:(SEL)selector withSelector:(SEL)swizzledSelector forClass:(Class)cls withMethodDescription:(struct objc_method_description)methodDescription implementationBlock:(id)implementationBlock undefinedBlock:(id)undefinedBlock
 {
+    // 如果原始方法可以respond，但是没有imp，直接返回
     if ([self instanceRespondsButDoesNotImplementSelector:selector class:cls]) {
         return;
     }
-    
+    // 如果可以响应 selector  获取 implementationBlock 的imp 否则获取 undefinedBlock的 imp
     IMP implementation = imp_implementationWithBlock((id)([cls instancesRespondToSelector:selector] ? implementationBlock : undefinedBlock));
-    
+    // 获取旧的method    
     Method oldMethod = class_getInstanceMethod(cls, selector);
+    
     if (oldMethod) {
+        // 添加新方法
         class_addMethod(cls, swizzledSelector, implementation, methodDescription.types);
         
         Method newMethod = class_getInstanceMethod(cls, swizzledSelector);
-        
+        // 旧方法，新方法交换
         method_exchangeImplementations(oldMethod, newMethod);
     } else {
+        // 新
         class_addMethod(cls, selector, implementation, methodDescription.types);
     }
 }
